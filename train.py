@@ -1,158 +1,67 @@
 import config
 from prepro import load_data, load_test_data
-from utils import cross_valid, write_test_file
+from feature_engineering import select_features, construct_features 
+from utils import cross_valid, write_test_file, write_selection_results, write_model_results
 import numpy as np
 import pandas
 import matplotlib.pyplot as plt
 
-from sklearn.linear_model import Lasso, Ridge
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, \
-                                          QuadraticDiscriminantAnalysis
-from sklearn.decomposition import PCA
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.feature_selection import SelectFromModel, RFECV, RFE
-from sklearn.feature_selection import SelectPercentile, f_regression, mutual_info_regression
-from sklearn.neighbors import KNeighborsRegressor
+
 from sklearn.metrics import mean_squared_error
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.preprocessing import PolynomialFeatures
+
 from sklearn.metrics import r2_score, explained_variance_score
 from pygam import LinearGAM
 from pygam.utils import generate_X_grid
 
 def main():
     
+    f = open('results.txt', 'w')
+
+    f.write("Preprocessing data...\n\n")
     # pre-process data
-    train_X, train_Y, train_idx, _ = load_data(config.data_path)
-    test_X, test_idx, _ = load_test_data(config.test_path)
-    print(test_idx)
+    train_X, train_Y, train_idx, _, test_X, test_idx = load_data(config.data_path, config.test_path)
     names = list(train_X)
     types = train_X.dtypes
     floats = (types == np.float64)
 
-#    lasso1 = Lasso(alpha=0.0001)
-    lasso = Lasso(alpha=0.001)
-
-#    lasso3 = Lasso(alpha=0.01)
-#    lasso4 = Lasso(alpha=0.05)
-#    lasso5 = Lasso(alpha=0.1)
-
-#    ridge1 = Ridge(alpha=0.01)
-#    ridge2 = Ridge(alpha=0.1)
-#    ridge3 = Ridge(alpha=1)
-#    ridge4 = Ridge(alpha=5)
-#    ridge5 = Ridge(alpha=10)
-#    kn3 = KNeighborsRegressor(n_neighbors=3, weights='distance')
-#    kn5 = KNeighborsRegressor(n_neighbors=5, weights='distance')
-#    kn10 = KNeighborsRegressor(n_neighbors=10, weights='distance')
-#    
-#    rf1 = RandomForestRegressor(n_estimators=500, max_depth=4, max_features='auto')
-#    rf2 = RandomForestRegressor(n_estimators=500, max_depth=4, max_features='sqrt')
-#    rf3 = RandomForestRegressor(n_estimators=500, max_depth=4, max_features='log2')
-#    rf4 = RandomForestRegressor(n_estimators=1000, max_depth=4, max_features='auto')
-#    rf5 = RandomForestRegressor(n_estimators=1000, max_depth=4, max_features='sqrt')
-#    rf6 = RandomForestRegressor(n_estimators=1000, max_depth=4, max_features='log2')
-    est = GradientBoostingRegressor(n_estimators=5000, learning_rate=0.01,
-          max_depth=1, random_state=0, loss='ls') 
-#    est2 = GradientBoostingRegressor(n_estimators=500, learning_rate=0.001,
-#          max_depth=1, random_state=0, loss='ls') 
-#    est3 = GradientBoostingRegressor(n_estimators=700, learning_rate=0.01,
-#          max_depth=1, random_state=0, loss='ls') 
-#    est4 = GradientBoostingRegressor(n_estimators=700, learning_rate=0.001,
-#          max_depth=1, random_state=0, loss='ls') 
-#    est5 = GradientBoostingRegressor(n_estimators=300, learning_rate=0.01,
-#          max_depth=1, random_state=0, loss='ls') 
-#    est6 = GradientBoostingRegressor(n_estimators=300, learning_rate=0.001,
-#          max_depth=1, random_state=0, loss='ls') 
-    '''
-    rf = rf.fit(train_X, train_Y)
-    selected = np.where(rf.feature_importances_ > 1e-2)
-    selected = list(selected[0])
-    for s in selected:
-        print(names[s])
-    sfm1 = SelectFromModel(rf, prefit=True, threshold=1e-3)
-    X_new1 = sfm1.transform(train_X)
+    new_X_GAM, new_test_GAM = construct_features(train_X, train_Y, test_X, have_poly=False)
     
-    sfm2 = SelectFromModel(ridge3, threshold=5e-2)
-    sfm2.fit(train_X, train_Y)
-    X_new2 = sfm2.transform(train_X)
-    sup1 = sfm2.get_support()
-    print(train_X.shape)
-    print(X_new2)
-    print(sup1)
-    '''
-    sel = SelectPercentile(f_regression, percentile=20)
-    sel.fit(train_X, train_Y)
-    sup = sel.get_support()
+    # feature selection
+    f.write("Feature Selection\n")
+    ridge_scores, ridge_X, ridge_test, ridge_names = select_features(train_X, train_Y, test_X, config.ridge_select, config.ridge_feats)
+    lasso_scores, lasso_X, lasso_test, lasso_names = select_features(train_X, train_Y, test_X, config.lasso_select, config.lasso_feats)
+    knn_scores, knn_X, knn_test, knn_names = select_features(train_X, train_Y, test_X, config.knn_select, config.knn_feats)
+    rf_scores, rf_X, rf_test, rf_names = select_features(train_X, train_Y, test_X, config.rf_select, config.rf_feats)
+    est_scores, est_X, est_test, est_names = select_features(train_X, train_Y, test_X, config.est_select, config.est_feats)
+    write_selection_results(f, 'Ridge Regression', config.ridge_feats, ridge_scores, ridge_names)
+    write_selection_results(f, 'LASSO Regression', config.lasso_feats, lasso_scores, lasso_names)
+    write_selection_results(f, 'K-Nearest Neighbours', config.knn_feats, knn_scores, knn_names)
+    write_selection_results(f, 'Random Forest', config.rf_feats, rf_scores, rf_names)
+    write_selection_results(f, 'Gradient Boosting', config.est_feats, est_scores, est_names)
+    f.write('\n#######################################\n\n')
 
-    sel_idx = np.where(sup == True)[0]
-    sel_names = [names[i] for i in sel_idx]
-    sel_names = [n for i,n in enumerate(sel_names) if floats[sel_idx[i]] == True]
-    
-    d = {}
-    d_t = {}
-    for i,n1 in enumerate(sel_names):
-        for j,n2 in enumerate(sel_names):
-            if i != j:
-                new_col = train_X[n1] * train_X[n2]
-                new_col_t = test_X[n1] * test_X[n2]
-                new_name = n1 + '*' + n2
-                d[new_name] = new_col
-                d_t[new_name] = new_col_t
-    comb_X = pandas.DataFrame(data=d)
-    comb_X_t = pandas.DataFrame(data=d_t)
-#    print(comb_X.shape)
-    float_names = [n for i,n in enumerate(names) if floats[i] == True]
-    quad_X = train_X[float_names] ** 2
-    quad_X_t = test_X[float_names] ** 2
-    quad_X.columns = [n + '^2' for n in float_names]
-    quad_X_t.columns = [n + '^2' for n in float_names]
-    tri_X = train_X[float_names] ** 3
-    tri_X_t = test_X[float_names] ** 3
-    tri_X.columns = [n + '^3' for n in float_names]
-    tri_X_t.columns = [n + '^3' for n in float_names]
-#    quat_X = train_X[sel_names] ** 4
-#    quat_X.columns = [n + '^4' for n in sel_names]
-    poly_X = quad_X.join(tri_X)
-    poly_X_t = quad_X_t.join(tri_X_t)
-    comb_X = comb_X.join(poly_X)
-    comb_X_t = comb_X_t.join(poly_X_t)
-#    poly_X = poly_X.join(quat_X)
-#    print(poly_X)
-    new_X = train_X.join(comb_X)
-    new_test = test_X.join(comb_X_t)
-    print(new_X.shape)
-    print(new_test.shape)
-    new_names = list(new_X)
-#    poly = PolynomialFeatures(2)
-#    new_X = poly.fit_transform(train_X)
-#    print(new_X.shape)
-#    models = [lasso1, lasso2, lasso3, lasso4, lasso5, ridge1, ridge2, ridge3, ridge4, ridge5, kn5, rf, est]
-#    models = [lasso1, lasso3, ridge1, ridge2, kn5, rf, est]
-#    models = [lasso1, lasso2, lasso3, lasso4, lasso5]
-#    models = [est1]
-#    scores1 = cross_valid(models, new_X, train_Y)
-#    scores2 = cross_valid(models, train_X, train_Y)
+    # model selection
+    f.write("Model Selection\n")
+    ridge_scores = cross_valid(config.ridge_models, ridge_X, train_Y)
+    lasso_scores = cross_valid(config.lasso_models, lasso_X, train_Y)
+    knn_scores = cross_valid(config.knn_models, knn_X, train_Y)
+    rf_scores = cross_valid(config.rf_models, rf_X, train_Y)
+    est_scores = cross_valid(config.est_models, est_X, train_Y)
+    write_model_results(f, 'Ridge Regression', config.ridge_models, ridge_scores)
+    write_model_results(f, 'LASSO Regression', config.lasso_models, lasso_scores)
+    write_model_results(f, 'K-Nearest Neighbours', config.knn_models, knn_scores)
+    write_model_results(f, 'Random Forest', config.rf_models, rf_scores)
+    write_model_results(f, 'Gradient Boosting', config.est_models, est_scores)
+    f.write('\n#######################################\n\n')
 
-    rfe = RFECV(lasso, cv=3)
-#    rfe2 = RFECV(lasso2, cv=3)
-#    rfe3 = RFECV(lasso3, cv=3)
-#    rfe4 = RFECV(lasso4, cv=3)
-#    rfe5 = RFECV(lasso5, cv=3)
-#    rfe3 = RFE(rf, 150)
-#    rfe4 = RFE(est, 150)
-    sel = SelectPercentile(mutual_info_regression, percentile=80)
-#    sel2 = SelectPercentile(f_regression, percentile=80)
-#    pca1 = PCA(n_components=50)
-    pca = PCA(n_components=90)
-    new_X = sel.fit_transform(new_X, train_Y)
-    new_test = sel.transform(new_test)
-    sup = sel.get_support()
-    sel_idx = np.where(sup == True)[0]
-    sel_names = [new_names[i] for i in sel_idx]
-    print(sel_names)
-#    new1_X = rfe1.fit_transform(new_X, train_Y)
-    print(new_X.shape)
+    best_reg = config.lasso3
+    best_tree = config.est3
+    best_reg.fit(lasso_X, train_Y)
+    predictions_reg = best_reg.predict(lasso_test)
+    best_tree.fit(est_X, train_Y)
+    predictions_tree = best_tree.predict(est_test)
+    write_test_file(predictions_reg, test_idx, 'results_reg.csv')
+    write_test_file(predsictions_tree, test_idx, 'results_tree.csv')
 
 #    valid_X = new_X[:200]
     valid_Y = train_Y[:200] 
